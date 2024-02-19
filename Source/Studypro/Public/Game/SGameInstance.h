@@ -24,4 +24,7 @@ public:
 private:
 	UPROPERTY()
 	FString Name;
+
+	UPROPERTY()
+	TObjectPtr<class USPigeon> SerializedPigeon;
 };
