@@ -222,20 +222,22 @@ ObjectDataFileWriterAr = nullptr;	//delete ObjectDataFileWriterAr; 와 같은 효과
 	}*/
 
 	//TMap 실습
-	{
+	/*{
 		TMap<int32, FString> BirdMap;
 		BirdMap.Add(5, TEXT("Pigeon"));
 		BirdMap.Add(2, TEXT("Owl"));
 		BirdMap.Add(7, TEXT("Albatross"));
-		//BirdMap == [ { Key : 5, value : "Pigeon" }, { Key : 2, Value : Owl } .. ] 와 같이 저장됨
+		BirdMap == [ { Key : 5, value : "Pigeon" }, { Key : 2, Value : Owl } .. ] 와 같이 저장됨
 
 		BirdMap.Add(2, TEXT("Penquin"));
-		//BirdMap == [ { Key : 5, value : "Pigeon" }, { Key : 2, Value : Penquin } .. ] 와 같이 저장됨
+		BirdMap == [ { Key : 5, value : "Pigeon" }, { Key : 2, Value : Penquin } .. ] 와 같이 저장됨
 
-		FString* BirdIn7 = BirdMap.Find(7);	//BirdIn7 = Albatross
-		FString* BirdIn8 = BirdMap.Find(8);	//BirdIn2 = nullptr
-		UE_LOG(LogTemp, Log, TEXT("BirdIn7: %s"), **BirdIn7);
-	}
+		FString* BirdIn7 = BirdMap.Find(7);	//*BirdIn7 = Albatross
+		FString* BirdIn8 = BirdMap.Find(8);	//*BirdIn2 = nullptr
+		UE_LOG(LogTemp, Log, TEXT("BirdIn7: %s"), **BirdIn7);	//왜 **를해야 값이 나올까
+	}*/
+
+
 }
 
 void USGameInstance::Shutdown()
