@@ -27,6 +27,16 @@ public:
 		return Ar;
 	}
 
+	bool operator==(const FBirdData& InBirdData) const	//TMap에 저장할때는 operator==함수와 GetTypeHash함수가 있어야함.
+	{
+		return ID == InBirdData.ID;
+	}
+
+	friend uint32 GetTypeHash(const FBirdData& InBirdData)
+	{
+		return GetTypeHash(InBirdData.ID);
+	}
+
 	UPROPERTY()
 	FString Name = TEXT("DefaultBirdName");
 	int32 ID = 0;
