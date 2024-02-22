@@ -16,8 +16,8 @@ public class Studypro : ModuleRules
 			"Json", "JsonUtilities",
 
 			//Enhanced Input
-			"EnhancedInput"
-		});
+			"EnhancedInput",
+        });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 	}

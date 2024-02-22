@@ -17,4 +17,10 @@ class STUDYPRO_API USInputConfigData : public UDataAsset
 public:
 	UPROPERTY(EditAnyWhere, BlueprintReadOnly)
 	TObjectPtr<class UInputAction> MoveAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<class UInputAction> LookAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<class UInputAction> ChangeViewAction;
 };
