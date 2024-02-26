@@ -36,6 +36,8 @@ ASCharacter::ASCharacter()
 	GetCharacterMovement()->AirControl = 0.35f;	//공중에서 컨트롤
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;	//멈추는 속도
 
+	bIsDead = false;
+
 }
 
 

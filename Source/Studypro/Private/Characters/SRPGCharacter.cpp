@@ -11,8 +11,13 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Inputs/SInputConfigData.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Animations/SAnimInstance.h"
+#include "Engine/DamageEvents.h"
+#include "Engine/EngineTypes.h"
 
 ASRPGCharacter::ASRPGCharacter()
+    :bIsAttacking(false)    //Attacking 초기화
 {
 	PrimaryActorTick.bCanEverTick = false;
 
@@ -32,6 +37,8 @@ ASRPGCharacter::ASRPGCharacter()
     GetCharacterMovement()->bUseControllerDesiredRotation = false;   //컨트롤로테이션을 목표 회전으로 삼고 지정한 속도로 돌리기. 위에 것을 false로 하고 이걸 true로 한다면 마우스 방향에 따라 고개가 바로 돌아감
     GetCharacterMovement()->RotationRate = FRotator(0.f, 400.f, 0.f);
 
+    GetCapsuleComponent()->SetCollisionProfileName(TEXT("SCharacter")); //해당 캐릭터의 콜리젼 타입을 SCharacter로 설정
+
 }
 
 void ASRPGCharacter::BeginPlay()
@@ -47,6 +54,38 @@ void ASRPGCharacter::BeginPlay()
             Subsystem->AddMappingContext(PlayerCharacterInputMappingContext, 0);
         }
     }
+
+    USAnimInstance* AnimInstance = Cast<USAnimInstance>(GetMesh()->GetAnimInstance());
+    if (true == ::IsValid(AnimInstance))
+    {
+        AnimInstance->OnMontageEnded.AddDynamic(this, &ThisClass::OnAttackMontageEnded);
+        AnimInstance->OnCheckHitDelegate.AddDynamic(this, &ThisClass::CheckHit);
+        AnimInstance->OnCheckCanNextComboDelegate.AddDynamic(this, &ThisClass::CheckCanNextCombo);
+    }
+}
+
+void ASRPGCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+    bIsAttacking = false;
+}
+
+float ASRPGCharacter::TakeDamage(float Damage, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    float FinalDamageAmount = Super::TakeDamage(Damage, DamageEvent, EventInstigator, DamageCauser);
+
+    CurrentHP = FMath::Clamp(CurrentHP - FinalDamageAmount, 0.f, MaxHP);  //Clamp(X,Min,Max)  = (X < Min) ? Min : (X < Max) ? X : Max;
+
+    if (CurrentHP < KINDA_SMALL_NUMBER)
+    {
+        bIsDead = true;
+        CurrentHP = 0.f;
+        GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
+    }
+    UKismetSystemLibrary::PrintString(this, FString::Printf(TEXT("%s [%.1f, %.1f]"), *GetName(), CurrentHP, MaxHP));
+
+    return FinalDamageAmount;
 }
 
 void ASRPGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -58,6 +97,8 @@ void ASRPGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
     {
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->MoveAction, ETriggerEvent::Triggered, this, &ASRPGCharacter::Move);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->LookAction, ETriggerEvent::Triggered, this, &ASRPGCharacter::Look);
+        EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->JumpAction, ETriggerEvent::Started, this, &ASRPGCharacter::Jump);
+        EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->AttackAction, ETriggerEvent::Started, this, &ASRPGCharacter::Attack);
     }
 }
 
@@ -84,3 +125,117 @@ void ASRPGCharacter::Look(const FInputActionValue& InValue)
     AddControllerYawInput(LookAxisVector.X);
     AddControllerPitchInput(LookAxisVector.Y);
 }
+
+void ASRPGCharacter::Attack(const FInputActionValue& InValue)
+{
+    //USAnimInstance* AnimInstance = Cast<USAnimInstance>(GetMesh()->GetAnimInstance());    //하나의 공격때 사용
+    //if (true == ::IsValid(AnimInstance) && bIsAttacking == false)
+    //{
+    //    GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
+    //    AnimInstance->PlayAttackAnimMontage();
+    //    bIsAttacking = true;
+    //}
+
+    if (0 == CurrentComboCount)
+    {
+        BeginCombo();
+        return;
+    }
+    else
+    {
+        ensure(FMath::IsWithinInclusive<int32>(CurrentComboCount, 1, MaxComboCount));
+        bIsAttackKeyPressed = true;
+    }
+}
+
+void ASRPGCharacter::CheckHit()
+{
+    FHitResult HitResult;
+    FCollisionQueryParams Params(NAME_None, false, this);   //this는 나 자신은 ignore한다는 뜻
+
+    bool bResult = GetWorld()->SweepSingleByChannel(
+        HitResult,
+        GetActorLocation(),
+        GetActorLocation() + AttackRange,
+        FQuat::Identity,
+        ECC_GameTraceChannel2,
+        FCollisionShape::MakeSphere(AttackRadius),
+        Params
+    );
+    
+    if (true == bResult)    //감지 성공
+    {
+        if (true == ::IsValid(HitResult.GetActor()))
+        {
+            //UKismetSystemLibrary::PrintString(this, FString::Printf(TEXT("Hit Actor Name : %s"), *HitResult.GetActor()->GetName()));
+            FDamageEvent DamageEvent;   //#include "Engine/DamageEvents.h",  #include "Engine/EngineTypes.h"
+            HitResult.GetActor()->TakeDamage(50.f, DamageEvent, GetController(), this);
+        }
+    }
+
+#pragma region CollisionDebugDrawing
+    FVector TraceVec = GetActorForwardVector() * AttackRange;
+    FVector Center = GetActorLocation() + TraceVec * 0.5f;
+    float HalfHeight = AttackRange * 0.5f + AttackRadius;
+    FQuat CapsuleRot = FRotationMatrix::MakeFromZ(TraceVec).ToQuat();   //z축을 눕히는 과정 캡슐 모양이 눕혀진다. 
+    FColor DrawColor = true == bResult ? FColor::Green : FColor::Red;
+    float DebugLifeTime = 5.f;
+
+    DrawDebugCapsule(
+        GetWorld(),
+        Center,
+        HalfHeight,
+        AttackRadius,
+        CapsuleRot,
+        DrawColor,
+        false,
+        DebugLifeTime
+    );
+#pragma endregion
+}
+
+void ASRPGCharacter::BeginCombo()
+{
+    USAnimInstance* AnimInstance = Cast<USAnimInstance>(GetMesh()->GetAnimInstance());
+    if (false == ::IsValid(AnimInstance))
+    {
+        return;
+    }
+
+    CurrentComboCount = 1;
+    GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
+
+    AnimInstance->PlayAttackAnimMontage();
+
+    
+    FOnMontageEnded OnMontageEndedDelegate;
+    OnMontageEndedDelegate.BindUObject(this, &ThisClass::EndCombo);
+    AnimInstance->Montage_SetEndDelegate(OnMontageEndedDelegate, AnimInstance->AttackAnimMontage);
+}
+
+void ASRPGCharacter::CheckCanNextCombo()
+{
+    USAnimInstance* AnimInstance = Cast<USAnimInstance>(GetMesh()->GetAnimInstance());
+    if (false == ::IsValid(AnimInstance))
+    {
+        return;
+    }
+
+    if (true == bIsAttackKeyPressed)
+    {
+        CurrentComboCount = FMath::Clamp(CurrentComboCount + 1, 1, MaxComboCount);
+
+        FName NextSectionName = *FString::Printf(TEXT("%s%d"), *AttackAnimMontageSectionName, CurrentComboCount);
+        AnimInstance->Montage_JumpToSection(NextSectionName, AnimInstance->AttackAnimMontage);
+        bIsAttackKeyPressed = false;
+    }
+}
+
+void ASRPGCharacter::EndCombo(UAnimMontage* InAnimMontage, bool bInterrupted)
+{
+    ensure(0 != CurrentComboCount);
+    CurrentComboCount = 0;
+    bIsAttackKeyPressed = false;
+    GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+}
+
