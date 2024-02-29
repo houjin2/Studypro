@@ -38,6 +38,7 @@ ASCharacter::ASCharacter()
 
 	bIsDead = false;
 
+
 }
 
 

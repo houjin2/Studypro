@@ -156,7 +156,7 @@ void ASRPGCharacter::CheckHit()
     bool bResult = GetWorld()->SweepSingleByChannel(
         HitResult,
         GetActorLocation(),
-        GetActorLocation() + AttackRange,
+        GetActorLocation() + GetActorForwardVector()*AttackRange,
         FQuat::Identity,
         ECC_GameTraceChannel2,
         FCollisionShape::MakeSphere(AttackRadius),
