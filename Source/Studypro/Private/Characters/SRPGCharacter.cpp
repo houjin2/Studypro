@@ -15,6 +15,7 @@
 #include "Animations/SAnimInstance.h"
 #include "Engine/DamageEvents.h"
 #include "Engine/EngineTypes.h"
+#include "Particles/ParticleSystemComponent.h"
 
 ASRPGCharacter::ASRPGCharacter()
     :bIsAttacking(false)    //Attacking 초기화
@@ -39,6 +40,10 @@ ASRPGCharacter::ASRPGCharacter()
 
     GetCapsuleComponent()->SetCollisionProfileName(TEXT("SCharacter")); //해당 캐릭터의 콜리젼 타입을 SCharacter로 설정
 
+    ParticleSystemComponent = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("ParticleSystemComponent"));
+    ParticleSystemComponent->SetupAttachment(GetRootComponent());
+    ParticleSystemComponent->SetAutoActivate(false);
+
 }
 
 void ASRPGCharacter::BeginPlay()
@@ -61,6 +66,16 @@ void ASRPGCharacter::BeginPlay()
         AnimInstance->OnMontageEnded.AddDynamic(this, &ThisClass::OnAttackMontageEnded);
         AnimInstance->OnCheckHitDelegate.AddDynamic(this, &ThisClass::CheckHit);
         AnimInstance->OnCheckCanNextComboDelegate.AddDynamic(this, &ThisClass::CheckCanNextCombo);
+    }
+}
+
+void ASRPGCharacter::SetCurrentEXP(float InCurrentEXP)
+{
+    CurrentEXP = FMath::Clamp(CurrentEXP + InCurrentEXP, 0.f, MaxEXP);
+    if (MaxEXP - KINDA_SMALL_NUMBER < CurrentEXP)
+    {
+        CurrentEXP = 0.f;
+        ParticleSystemComponent->Activate(true);
     }
 }
 

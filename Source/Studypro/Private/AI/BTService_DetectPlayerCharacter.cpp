@@ -50,7 +50,7 @@ void UBTService_DetectPlayerCharacter::TickNode(UBehaviorTreeComponent& OwnerCom
                             {
                                 OwnerComp.GetBlackboardComponent()->SetValueAsObject(ASAIController::TargetActorKey, PC);
 
-                                UKismetSystemLibrary::PrintString(this, FString::Printf(TEXT("Detected!")));
+                                //UKismetSystemLibrary::PrintString(this, FString::Printf(TEXT("Detected!")));
                                 DrawDebugSphere(World, CenterPosition, DetectRadius, 16, FColor::Red, false, 0.5f);
                                 DrawDebugPoint(World, PC->GetActorLocation(), 10.f, FColor::Red, false, 0.5f);
                                 DrawDebugLine(World, NPC->GetActorLocation(), PC->GetActorLocation(), FColor::Red, false, 0.5f, 0u, 3.f);
@@ -71,7 +71,7 @@ void UBTService_DetectPlayerCharacter::TickNode(UBehaviorTreeComponent& OwnerCom
                     OwnerComp.GetBlackboardComponent()->SetValueAsObject(ASAIController::TargetActorKey, nullptr);
                 }
 
-                UKismetSystemLibrary::PrintString(this, FString::Printf(TEXT("No target detected...")));
+                //UKismetSystemLibrary::PrintString(this, FString::Printf(TEXT("No target detected...")));
 
                 DrawDebugSphere(World, CenterPosition, DetectRadius, 16, FColor::Green, false, 0.5f);
             }

@@ -18,6 +18,8 @@ class STUDYPRO_API USAnimInstance : public UAnimInstance
     GENERATED_BODY()
 
     friend class ASRPGCharacter;
+    
+    friend class ASNonPlayerCharacter;
 
 public:
     USAnimInstance();
