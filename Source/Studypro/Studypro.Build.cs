@@ -22,8 +22,14 @@ public class Studypro : ModuleRules
             "NavigationSystem",
             "AIModule",
             "GameplayTasks",
+
+			//UI
+			"UMG",
         });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			//Custom Modules
+			"StudyProjectSettings",
+		});
 	}
 }

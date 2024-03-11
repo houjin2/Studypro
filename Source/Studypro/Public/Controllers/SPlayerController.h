@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// SPlayerController.h
 
 #pragma once
 
@@ -17,6 +17,26 @@ class STUDYPRO_API ASPlayerController : public APlayerController
 public:
     ASPlayerController();
 
+	class USHUD* GetHUDWidget() const { return HUDWidget; };
+
+    void ToggleMenu();
+
 protected:
 	virtual void BeginPlay() override;
+
+protected:
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASPlayerController", Meta = (AllowprivateAccess))
+    TSubclassOf<class UUserWidget> MenuUIClass;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASPlayerController", Meta = (AllowprivateAccess))
+    TObjectPtr<class UUserWidget> MenuUIInstance;
+
+    bool bIsMenuOn = false;
+
+private:
+    UPROPERTY();
+    TObjectPtr<class USHUD> HUDWidget;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ASPlayerController", Meta = (AllowPrivateAccess));
+    TSubclassOf<class USHUD> HUDWidgetClass;
 };

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Components/SStatComponent.h"
 #include "SCharacter.generated.h"
 
 UCLASS()
@@ -14,15 +15,16 @@ class STUDYPRO_API ASCharacter : public ACharacter
 public:
 	ASCharacter();
 
-	float GetMaxHP() const { return MaxHP; }
+	virtual void BeginPlay() override;
 
-	float GetCurrentHP() const { return CurrentHP; }
-	
-	void SetMaxHP(float InMaxHP) { MaxHP = InMaxHP; }
+	virtual float TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
-	void SetCurrentHP(float InCurrentHP) { CurrentHP = InCurrentHP; }
+	class USStatComponent* GetStatComponent() { return StatComponent; }
 
-	bool IsDead() const { return bIsDead; }
+	UFUNCTION()
+	virtual void OnCharacterDeath();
+
+	virtual void SetWidget(class UStudyUserWidget* InStudyUserWidget) {}
 private:
 
 protected:
@@ -32,12 +34,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASCharacter", Meta = (AllowprivateAccess))
 	TObjectPtr<class UCameraComponent> CameraComponent;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASCharacter", Meta = (AllowprivateAccess))
-	float MaxHP = 200.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASCharacter", Meta = (AllowprivateAccess))
-	float CurrentHP = 200.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASCharacter", Meta = (AllowprivateAccess))
-	uint8 bIsDead : 1;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = ASPlayerCharacter, Meta = (AllowPrivateAccess))
+	TObjectPtr<class USStatComponent> StatComponent;
 };

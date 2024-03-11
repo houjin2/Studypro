@@ -10,6 +10,8 @@ public class StudyproEditorTarget : TargetRules
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.V2;
 		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_1;
-		ExtraModuleNames.Add("Studypro");
-	}
+        ExtraModuleNames.Add("Studypro");
+		ExtraModuleNames.Add("StudyProjectSettings");
+
+    }
 }

@@ -26,6 +26,7 @@ public:
 
 	float GetRightInputValue() const { return RightInputValue; }
 
+	/*
 	float GetMaxEXP() const { return MaxEXP; }
 
 	float GetCurrentEXP() const { return CurrentEXP; }
@@ -33,6 +34,7 @@ public:
 	void SetMaxEXP(float InMaxEXP) { MaxEXP = InMaxEXP; }
 
 	void SetCurrentEXP(float InCurrentEXP);
+	*/
 
 	UFUNCTION()
 	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
@@ -49,6 +51,8 @@ private:
 
 	void Attack(const FInputActionValue& InValue);
 
+	void Menu(const FInputActionValue& InValue);
+
 	UFUNCTION()
 	void CheckHit();
 
@@ -59,6 +63,13 @@ private:
 
 	UFUNCTION()
 	void EndCombo(class UAnimMontage* InAnimMontage, bool bInterrupted);
+
+	UFUNCTION()
+	void OnCurrentLevelChanged(int32 InOldCurrentLevel, int32 InNewCurrentLevel);
+
+	UFUNCTION()
+	void OnAssetLoaded();
+
 private:
 	UPROPERTY(EditAnyWhere, BlueprintReadOnly, Category = "SRPGCharacter", Meta = (AllowprivateAccess))
 	TObjectPtr<class USInputConfigData> PlayerCharacterInputConfigData;
@@ -90,9 +101,15 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASRPGCharacter", Meta = (AllowPrivateAccess))
 	TObjectPtr<class UParticleSystemComponent> ParticleSystemComponent;
 
+	/*
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASRPGCharacter", Meta = (AllowPrivateAccess))
 	float MaxEXP = 10;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ASRPGCharacter", Meta = (AllowPrivateAccess))
 	float CurrentEXP = 0;
+	*/
+
+	FSoftObjectPath CurrentPlayerCharacterMeshPath = FSoftObjectPath();
+
+	TSharedPtr<struct FStreamableHandle> AssetStreamableHandle = nullptr;
 };

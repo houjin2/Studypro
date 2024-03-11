@@ -16,6 +16,11 @@
 #include "Engine/DamageEvents.h"
 #include "Engine/EngineTypes.h"
 #include "Particles/ParticleSystemComponent.h"
+#include "Game/SPlayerState.h"
+#include "SPlayerCharacterSettings.h"
+#include "Game/SGameInstance.h"
+#include "Engine/StreamableManager.h"
+#include "Controllers/SPlayerController.h"
 
 ASRPGCharacter::ASRPGCharacter()
     :bIsAttacking(false)    //Attacking 초기화
@@ -44,6 +49,15 @@ ASRPGCharacter::ASRPGCharacter()
     ParticleSystemComponent->SetupAttachment(GetRootComponent());
     ParticleSystemComponent->SetAutoActivate(false);
 
+    const USPlayerCharacterSettings* CDO = GetDefault<USPlayerCharacterSettings>(); //StudyProjectSettings 모듈을 사용, 캐릭터에 매쉬 추가
+    if (0 < CDO->PlayerCharacterMeshPaths.Num())
+    {
+        for (FSoftObjectPath PlayerCharacterMeshPaths : CDO->PlayerCharacterMeshPaths)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("path : %s"), *(PlayerCharacterMeshPaths.ToString()));
+        }
+    }
+
 }
 
 void ASRPGCharacter::BeginPlay()
@@ -67,8 +81,55 @@ void ASRPGCharacter::BeginPlay()
         AnimInstance->OnCheckHitDelegate.AddDynamic(this, &ThisClass::CheckHit);
         AnimInstance->OnCheckCanNextComboDelegate.AddDynamic(this, &ThisClass::CheckCanNextCombo);
     }
+
+
+    FTimerHandle TimerHandle;
+    GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, TimerHandle]() mutable -> void
+        {
+            ASPlayerState* PS = GetPlayerState<ASPlayerState>();
+            if (true == ::IsValid(PS))
+            {
+                if (false == PS->OnCurrentLevelChangedDelegate.IsAlreadyBound(this, &ThisClass::OnCurrentLevelChanged))
+                {
+                    PS->OnCurrentLevelChangedDelegate.AddDynamic(this, &ThisClass::OnCurrentLevelChanged);
+
+                    const USPlayerCharacterSettings* CDO = GetDefault<USPlayerCharacterSettings>();
+                    int32 SelectedMeshIndex = static_cast<int32>(PS->GetCurrentTeamType()) - 1;
+                    CurrentPlayerCharacterMeshPath = CDO->PlayerCharacterMeshPaths[SelectedMeshIndex];
+
+                    if (USGameInstance* SGI = Cast<USGameInstance>(GetGameInstance()))
+                    {
+                        AssetStreamableHandle = SGI->StreamableManager.RequestAsyncLoad(
+                            CurrentPlayerCharacterMeshPath,
+                            FStreamableDelegate::CreateUObject(this, &ThisClass::OnAssetLoaded)
+                        );
+                    }
+
+                    TimerHandle.Invalidate();
+                }
+            }
+        }, 0.1f, true);
+
+
+
+    /*
+    const USPlayerCharacterSettings* CDO = GetDefault<USPlayerCharacterSettings>();
+    int32 RandIndex = FMath::RandRange(0, CDO->PlayerCharacterMeshPaths.Num() - 1);
+    CurrentPlayerCharacterMeshPath = CDO->PlayerCharacterMeshPaths[RandIndex];
+
+    USGameInstance* SGI = Cast<USGameInstance>(GetGameInstance());
+    if (true == ::IsValid(SGI))
+    {
+        AssetStreamableHandle = SGI->StreamableManager.RequestAsyncLoad(
+            CurrentPlayerCharacterMeshPath,
+            FStreamableDelegate::CreateUObject(this, &ThisClass::OnAssetLoaded)
+        );
+    }
+    */
+
 }
 
+/*
 void ASRPGCharacter::SetCurrentEXP(float InCurrentEXP)
 {
     CurrentEXP = FMath::Clamp(CurrentEXP + InCurrentEXP, 0.f, MaxEXP);
@@ -78,6 +139,7 @@ void ASRPGCharacter::SetCurrentEXP(float InCurrentEXP)
         ParticleSystemComponent->Activate(true);
     }
 }
+*/
 
 void ASRPGCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
@@ -85,20 +147,10 @@ void ASRPGCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupt
     bIsAttacking = false;
 }
 
+
 float ASRPGCharacter::TakeDamage(float Damage, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
     float FinalDamageAmount = Super::TakeDamage(Damage, DamageEvent, EventInstigator, DamageCauser);
-
-    CurrentHP = FMath::Clamp(CurrentHP - FinalDamageAmount, 0.f, MaxHP);  //Clamp(X,Min,Max)  = (X < Min) ? Min : (X < Max) ? X : Max;
-
-    if (CurrentHP < KINDA_SMALL_NUMBER)
-    {
-        bIsDead = true;
-        CurrentHP = 0.f;
-        GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
-    }
-    UKismetSystemLibrary::PrintString(this, FString::Printf(TEXT("%s [%.1f, %.1f]"), *GetName(), CurrentHP, MaxHP));
 
     return FinalDamageAmount;
 }
@@ -114,6 +166,7 @@ void ASRPGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->LookAction, ETriggerEvent::Triggered, this, &ASRPGCharacter::Look);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->JumpAction, ETriggerEvent::Started, this, &ASRPGCharacter::Jump);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->AttackAction, ETriggerEvent::Started, this, &ASRPGCharacter::Attack);
+        EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->MenuAction, ETriggerEvent::Started, this, &ASRPGCharacter::Menu);
     }
 }
 
@@ -160,6 +213,15 @@ void ASRPGCharacter::Attack(const FInputActionValue& InValue)
     {
         ensure(FMath::IsWithinInclusive<int32>(CurrentComboCount, 1, MaxComboCount));
         bIsAttackKeyPressed = true;
+    }
+}
+
+void ASRPGCharacter::Menu(const FInputActionValue& InValue)
+{
+    ASPlayerController* PlayerController = GetController<ASPlayerController>();
+    if (true == ::IsValid(PlayerController))
+    {
+        PlayerController->ToggleMenu();
     }
 }
 
@@ -252,5 +314,20 @@ void ASRPGCharacter::EndCombo(UAnimMontage* InAnimMontage, bool bInterrupted)
     CurrentComboCount = 0;
     bIsAttackKeyPressed = false;
     GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+}
+
+void ASRPGCharacter::OnCurrentLevelChanged(int32 InOldCurrentLevel, int32 InNewCurrentLevel)
+{
+    ParticleSystemComponent->Activate(true);
+}
+
+void ASRPGCharacter::OnAssetLoaded()
+{
+    AssetStreamableHandle->ReleaseHandle();
+    TSoftObjectPtr<USkeletalMesh> LoadedAsset(CurrentPlayerCharacterMeshPath);
+    if (true == LoadedAsset.IsValid())
+    {
+        GetMesh()->SetSkeletalMesh(LoadedAsset.Get());
+    }
 }
 
