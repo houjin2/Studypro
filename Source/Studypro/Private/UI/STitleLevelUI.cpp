@@ -20,6 +20,9 @@ void USTitleLevelUI::NativeConstruct()
 	SavedGameButton.Get()->OnClicked.AddDynamic(this, &ThisClass::OnSavedGameButtonClicked);
 
 	SavedGameButton->SetIsEnabled(false);
+
+	//TPS에선 사용하지 않으므로 비활성화
+	/*
 	const ASPlayerState* PS = GetDefault<ASPlayerState>();
 	if (true == ::IsValid(PS))
 	{
@@ -29,6 +32,7 @@ void USTitleLevelUI::NativeConstruct()
 			SavedGameButton->SetIsEnabled(true);
 		}
 	}
+	*/
 }
 
 void USTitleLevelUI::OnNewGameButtonClicked()

@@ -77,10 +77,10 @@ private:
 	UPROPERTY(EditAnyWhere, BlueprintReadOnly, Category = "SRPGCharacter", Meta = (AllowprivateAccess))
 	TObjectPtr<class UInputMappingContext> PlayerCharacterInputMappingContext;
 
-	UPROPERTY(EditAnyWhere, BlueprintReadOnly, Category = "SRPGCharacter", Meta = (AllowprivateAccess = true))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SRPGCharacter", Meta = (AllowprivateAccess = true))
 	float ForwardInputValue;
 
-	UPROPERTY(EditAnyWhere, BlueprintReadOnly, Category = "SRPGCharacter", Meta = (AllowprivateAccess = true))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SRPGCharacter", Meta = (AllowprivateAccess = true))
 	float RightInputValue;
 
 	uint8 bIsAttacking : 1;
