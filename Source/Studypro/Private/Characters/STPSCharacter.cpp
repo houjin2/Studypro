@@ -13,6 +13,14 @@
 #include "Inputs/SInputConfigData.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetMathLibrary.h"   //사격구현
+#include "Controllers/SPlayerController.h"  //CameraShake
+#include "Components/SStatComponent.h"  //피격
+#include "Engine/EngineTypes.h"         //피격
+#include "Engine/DamageEvents.h"        //피격
+#include "WorldStatic/SLandMine.h"
+#include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"      //애니메이션 동기화
+#include "Engine/Engine.h"          //애니메이션 동기화
 
 ASTPSCharacter::ASTPSCharacter()
     : ASCharacter()
@@ -46,8 +54,70 @@ void ASTPSCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
 
-    CurrentFOV = FMath::FInterpTo(CurrentFOV, TargetFOV, DeltaSeconds, 35.f);
+    CurrentFOV = FMath::FInterpTo(CurrentFOV, TargetFOV, DeltaSeconds, 35.f);   //우클릭 줌 구현
     CameraComponent->SetFieldOfView(CurrentFOV);
+    
+
+    // Aim 방향에 따른 총구 방향
+    if (true == ::IsValid(GetController()))
+    {
+        FRotator ControlRotation = GetController()->GetControlRotation();
+        CurrentAimPitch = ControlRotation.Pitch;
+        CurrentAimYaw = ControlRotation.Yaw;
+    }
+
+    //부분 렉돌 피격 구현
+    if (true == bIsNowRagdollBlending)
+    {
+        CurrentRagdollBlendWeight = FMath::FInterpTo(CurrentRagdollBlendWeight, TargetRagdollBlendWeight, DeltaSeconds, 10.f);
+
+        FName PivotBoneName = FName(TEXT("spine_01"));
+        GetMesh()->SetAllBodiesBelowPhysicsBlendWeight(PivotBoneName, CurrentRagdollBlendWeight);
+
+        if (CurrentRagdollBlendWeight - TargetRagdollBlendWeight < KINDA_SMALL_NUMBER)
+        {
+            GetMesh()->SetAllBodiesBelowSimulatePhysics(PivotBoneName, false);
+            bIsNowRagdollBlending = false;
+        }
+
+        //피격모션 도중 죽으면 다시 상체가 기존 모션으로 돌아가기 때문에 체력이 0과 가까우면 전체 렉돌 활성화
+        if (true == ::IsValid(GetStatComponent()) && GetStatComponent()->GetCurrentHP() < KINDA_SMALL_NUMBER)
+        {
+            GetMesh()->SetAllBodiesBelowPhysicsBlendWeight(FName(TEXT("root")), 1.f);
+            // 모든 본에 렉돌 가중치
+            GetMesh()->SetSimulatePhysics(true);
+            bIsNowRagdollBlending = false;
+        }
+    }
+
+
+    //애니메이션 동기화
+    if (true == ::IsValid(GetController()))
+    {
+        PreviousAimPitch = CurrentAimPitch;
+        PreviousAimYaw = CurrentAimYaw;
+
+        FRotator ControlRotation = GetController()->GetControlRotation();
+        CurrentAimPitch = ControlRotation.Pitch;
+        CurrentAimYaw = ControlRotation.Yaw;
+
+        if (PreviousAimPitch != CurrentAimPitch || PreviousAimYaw != CurrentAimYaw)
+        {
+            if (false == HasAuthority() || GetOwner() != UGameplayStatics::GetPlayerController(this, 0)) //서버에선 원래 Update 되지 않으므로 호출할 필요 없음.
+            {
+                UpdateAimValue_Server(CurrentAimPitch, CurrentAimYaw);
+            }
+        }
+    }
+
+    if (PreviousForwardInputValue != ForwardInputValue || PreviousRightInputValue != RightInputValue)
+    {
+        if (false == HasAuthority() || GetOwner() != UGameplayStatics::GetPlayerController(this, 0))    //서버에선 원래 Update 되지 않으므로 호출할 필요 없음.
+        {
+            UpdateInputValue_Server(ForwardInputValue, RightInputValue);
+        }
+    }
+
 }
 
 void ASTPSCharacter::BeginPlay()
@@ -71,6 +141,25 @@ void ASTPSCharacter::BeginPlay()
     }
 }
 
+float ASTPSCharacter::TakeDamage(float Damage, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    float ActualDamage = Super::TakeDamage(Damage, DamageEvent, EventInstigator, DamageCauser);
+
+    PlayRagdoll_NetMulticast();
+
+    return ActualDamage;
+}
+
+void ASTPSCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(ThisClass, ForwardInputValue);
+    DOREPLIFETIME(ThisClass, RightInputValue);
+    DOREPLIFETIME(ThisClass, CurrentAimPitch);
+    DOREPLIFETIME(ThisClass, CurrentAimYaw);
+}
+
 void ASTPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -82,11 +171,16 @@ void ASTPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->LookAction, ETriggerEvent::Triggered, this, &ASTPSCharacter::Look);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->JumpAction, ETriggerEvent::Started, this, &ASTPSCharacter::Jump);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->AttackAction, ETriggerEvent::Started, this, &ASTPSCharacter::Attack);
+        //우클릭 줌
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->IronSightAction, ETriggerEvent::Started, this, &ThisClass::StartIronSight);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->IronSightAction, ETriggerEvent::Completed, this, &ThisClass::EndIronSight);
+        //단발 연발
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->TriggerAction, ETriggerEvent::Started, this, &ThisClass::ToggleTrigger);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->AttackAction, ETriggerEvent::Started, this, &ThisClass::StartFire);
         EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->AttackAction, ETriggerEvent::Completed, this, &ThisClass::StopFire);
+        //LandMine
+        EnhancedInputComponent->BindAction(PlayerCharacterInputConfigData->LandMineAction, ETriggerEvent::Started, this, &ThisClass::SpawnLandMine);
+
     }
 }
 
@@ -124,6 +218,12 @@ void ASTPSCharacter::Attack(const FInputActionValue& InValue)
 
 void ASTPSCharacter::Fire()
 {
+    //Fire()자체는 Owning Client에서 수행되어야 하기 떄문에
+    if (true == HasAuthority() || GetOwner() != UGameplayStatics::GetPlayerController(this, 0))
+    {
+        return;
+    }
+
     APlayerController* PlayerController = Cast<APlayerController>(GetController());
     if (false == ::IsValid(PlayerController))
     {
@@ -147,19 +247,71 @@ void ASTPSCharacter::Fire()
     // 복잡한 모양의 충돌체를 손쉽게 제작 가능.
 
     FVector MuzzleLocation = WeaponSkeletalMeshComponent->GetSocketLocation(FName("MuzzleSocket"));
-    bool bIsCollide = GetWorld()->LineTraceSingleByChannel(HitResult, MuzzleLocation, CameraEndLocation, ECC_Visibility, QueryParams);
+    bool bIsCollide = GetWorld()->LineTraceSingleByChannel(HitResult, MuzzleLocation, CameraEndLocation, ECC_GameTraceChannel2, QueryParams);   //ECC_Visibility는 캡슐 컴포넌트를 뚫지 못함. 똑같이 Attack의 트레이스 채널로 변경.
     //DrawDebugLine(GetWorld(), Start, End, FColor(255, 0, 0, 255), false, 20.f, 0U, 5.f);
     //DrawDebugSphere(GetWorld(), Start, 3.f, 16, FColor(0, 255, 0, 255), false, 20.f, 0U, 5.f);
     //DrawDebugSphere(GetWorld(), End, 3.f, 16, FColor(0, 0, 255, 255), false, 20.f, 0U, 5.f);
 
     if (true == bIsCollide)
     {
-        DrawDebugLine(GetWorld(), MuzzleLocation, HitResult.Location, FColor(255, 255, 255, 64), true, 0.1f, 0u, 0.5f);
+        //DrawDebugLine(GetWorld(), MuzzleLocation, HitResult.Location, FColor(255, 255, 255, 64), true, 0.1f, 0u, 0.5f);
+
+        ASCharacter* HittedCharacter = Cast<ASCharacter>(HitResult.GetActor());
+        if (true == ::IsValid(HittedCharacter))
+        {
+            FDamageEvent DamageEvent;
+            //HittedCharacter->TakeDamage(10.f, DamageEvent, GetController(), this);
+
+            //피격 부위 판정 구현
+            FString BoneNameString = HitResult.BoneName.ToString();
+            //UKismetSystemLibrary::PrintString(this, BoneNameString);
+            //DrawDebugSphere(GetWorld(), HitResult.Location, 3.f, 16, FColor(255, 0, 0, 255), true, 20.f, 0U, 5.f);
+
+            //헤드샷 로직 추가
+            if (true == BoneNameString.Equals(FString(TEXT("HEAD")), ESearchCase::IgnoreCase))  //ESearchCast는 HEAD에서 대소문자 구분안하고 글자만 맞으면 되게 할때 사용
+            {
+                //HittedCharacter->TakeDamage(100.f, DamageEvent, GetController(), this);
+                ApplyDamageAndDrawLine_Server(MuzzleLocation, HitResult.Location, HittedCharacter, 100.f, DamageEvent, GetController(), this);
+            }
+            else
+            {
+                //HittedCharacter->TakeDamage(10.f, DamageEvent, GetController(), this);
+                ApplyDamageAndDrawLine_Server(MuzzleLocation, HitResult.Location, HittedCharacter, 10.f, DamageEvent, GetController(), this);
+            }
+        }
     }
     else
     {
-        DrawDebugLine(GetWorld(), MuzzleLocation, CameraEndLocation, FColor(255, 255, 255, 64), false, 0.1f, 0U, 0.5f);
+        //DrawDebugLine(GetWorld(), MuzzleLocation, CameraEndLocation, FColor(255, 255, 255, 64), false, 0.1f, 0U, 0.5f);
+        FDamageEvent DamageEvent;
+        ApplyDamageAndDrawLine_Server(MuzzleLocation, CameraEndLocation, nullptr, 0.f, DamageEvent, GetController(), this);
     }
+
+
+    //AnimMontage 연결
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (false == AnimInstance)
+    {
+        return;
+    }
+
+    if (false == AnimInstance->Montage_IsPlaying(RifleFireAnimMontage))
+    {
+        AnimInstance->Montage_Play(RifleFireAnimMontage);
+        PlayAttackMontage_Server();
+    }
+
+
+    //CameraShake
+    if (true == ::IsValid(FireShake))
+    {
+        if(GetOwner() == UGameplayStatics::GetPlayerController(this, 0))
+        { 
+            PlayerController->ClientStartCameraShake(FireShake);
+        }
+
+    }
+
 }
 
 void ASTPSCharacter::StartIronSight(const FInputActionValue& InValue)
@@ -188,4 +340,108 @@ void ASTPSCharacter::StartFire(const FInputActionValue& InValue)
 void ASTPSCharacter::StopFire(const FInputActionValue& InValue)
 {
     GetWorldTimerManager().ClearTimer(BetweenShotsTimer);
+}
+
+void ASTPSCharacter::SpawnLandMine(const FInputActionValue& InValue)
+{
+    SpawnLandMine_Server();
+}
+
+void ASTPSCharacter::OnHittedRagdollRestoreTimerElapsed()
+{
+    FName PivotBoneName = FName(TEXT("spine_01"));
+    //GetMesh()->SetAllBodiesBelowSimulatePhysics(PivotBoneName, false);
+    //float BlendWeight = 0.f;
+    //GetMesh()->SetAllBodiesBelowPhysicsBlendWeight(PivotBoneName, BlendWeight);
+    TargetRagdollBlendWeight = 0.f;
+    CurrentRagdollBlendWeight = 1.f;
+    bIsNowRagdollBlending = true;
+}
+
+void ASTPSCharacter::PlayAttackMontage_Server_Implementation()
+{
+    PlayAttackMontage_NetMulticast();
+}
+
+void ASTPSCharacter::PlayAttackMontage_NetMulticast_Implementation()
+{
+    if (false == HasAuthority() && GetOwner() != UGameplayStatics::GetPlayerController(this, 0))
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (false == ::IsValid(AnimInstance))
+        {
+            return;
+        }
+
+        if (false == AnimInstance->Montage_IsPlaying(RifleFireAnimMontage))
+        {
+            AnimInstance->Montage_Play(RifleFireAnimMontage);
+        }
+    }
+}
+
+void ASTPSCharacter::UpdateInputValue_Server_Implementation(const float& InForwardInputValue, const float& InRightInputValue)
+{
+    ForwardInputValue = InForwardInputValue;
+    RightInputValue = InRightInputValue;
+}
+
+void ASTPSCharacter::UpdateAimValue_Server_Implementation(const float& InAimPitchValue, const float& InAimYawValue)
+{
+    CurrentAimPitch = InAimPitchValue;
+    CurrentAimYaw = InAimYawValue;
+}
+
+bool ASTPSCharacter::SpawnLandMine_Server_Validate()    //검증용 함수
+{
+    return true;
+}
+
+void ASTPSCharacter::SpawnLandMine_Server_Implementation()  //Implementation() 이 구현함수
+{
+    if (true == ::IsValid(LandMineClass))
+    {
+        FVector SpawnedLocation = (GetActorLocation() + GetActorForwardVector() * 200.f) - FVector(0.f, 0.f, 90.f);
+        ASLandMine* SpawnedLandMine = GetWorld()->SpawnActor<ASLandMine>(LandMineClass, SpawnedLocation, FRotator::ZeroRotator);
+        SpawnedLandMine->SetOwner(GetController());
+    }
+}
+
+void ASTPSCharacter::ApplyDamageAndDrawLine_Server_Implementation(const FVector& InDrawStart, const FVector& InDrawEnd, ACharacter* InHittedCharacter, float InDamage, FDamageEvent const& InDamageEvent, AController* InEventInstigator, AActor* InDamageCauser)
+{
+    if (true == ::IsValid(InHittedCharacter))
+    {
+        InHittedCharacter->TakeDamage(InDamage, InDamageEvent, InEventInstigator, InDamageCauser);
+    }
+
+    DrawLine_NetMulticast(InDrawStart, InDrawEnd);
+}
+
+void ASTPSCharacter::DrawLine_NetMulticast_Implementation(const FVector& InDrawStart, const FVector& InDrawEnd)
+{
+    DrawDebugLine(GetWorld(), InDrawStart, InDrawEnd, FColor(255, 255, 255, 64), false, 0.1f, 0U, 0.5f);
+}
+
+void ASTPSCharacter::PlayRagdoll_NetMulticast_Implementation()
+{
+    if (false == ::IsValid(GetStatComponent()))
+    {
+        return;
+    }
+
+    if (GetStatComponent()->GetCurrentHP() < KINDA_SMALL_NUMBER)
+    {
+        GetMesh()->SetSimulatePhysics(true);    //렉돌 활성화 -> 죽을시 흐물흐물 
+    }
+    else   //부분 렉돌사용하여 피격모션
+    {
+        FName PivotBoneName = FName(TEXT("spine_01"));
+        GetMesh()->SetAllBodiesBelowSimulatePhysics(PivotBoneName, true);
+        //float BlendWeight = 1.f;    //렉돌 포즈에 완전 치우쳐지게끔 가중치 설정
+        //GetMesh()->SetAllBodiesBelowPhysicsBlendWeight(PivotBoneName, BlendWeight);
+
+        TargetRagdollBlendWeight = 1.f;
+        HittedRagdollRestoreTimerDelegate.BindUObject(this, &ThisClass::OnHittedRagdollRestoreTimerElapsed);
+        GetWorld()->GetTimerManager().SetTimer(HittedRagdollRestoreTimer, HittedRagdollRestoreTimerDelegate, 1.f, false);
+    }
 }

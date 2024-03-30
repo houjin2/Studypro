@@ -17,6 +17,9 @@ class STUDYPRO_API ASUIPlayerController : public APlayerController
 public:
 	virtual void BeginPlay() override;
 
+	//멀티 서버 접속
+	void JoinServer(const FString& InIPAddress);
+
 private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ASUIPlayerController", meta = (AllowprivateAccess))
 	TSubclassOf<class UUserWidget> UIWidgetClass;

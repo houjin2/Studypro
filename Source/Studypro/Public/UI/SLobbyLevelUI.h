@@ -41,6 +41,9 @@ protected:
 	TObjectPtr<class UEditableText> EditPlayerName;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "USLobbyLevelUI", Meta = (AllowprivateAccess, BindWidget))
+	TObjectPtr<class UEditableText> EditServerIP;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "USLobbyLevelUI", Meta = (AllowprivateAccess, BindWidget))
 	TObjectPtr<class UButton> SubmitButton;
 
 	FString PlayerName = TEXT("DefaultPlayerName");
